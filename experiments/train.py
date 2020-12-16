@@ -3,10 +3,14 @@ import numpy as np
 import tensorflow as tf
 import time
 import pickle
+from datetime import datetime
 
 import maddpg.common.tf_util as U
 from maddpg.trainer.maddpg import MADDPGAgentTrainer
 import tensorflow.contrib.layers as layers
+
+from tensorboard_logger import configure as tb_configure
+from tensorboard_logger import log_value as tb_log_value
 
 
 def parse_args():
@@ -116,7 +120,7 @@ def make_env(scenario_name, arglist, benchmark=False):
         response_type_string="l",  # "m"
         number_of_participants=10,
         one_day=15,
-        energy_in_state=False,
+        energy_in_state=True,
         yesterday_in_state=False,
         day_of_week=False,
         pricing_type="TOU",
@@ -171,6 +175,8 @@ def train(arglist):
             )
         )
 
+        np.seterr(all="raise")  # define before your code.
+
         # Initialize
         U.initialize()
 
@@ -192,10 +198,13 @@ def train(arglist):
         train_step = 0
         t_start = time.time()
 
+        print("making logger")
+        tb_configure("logs/" + str(arglist.exp_name) + "_" + str(datetime.now()))
         print("Starting iterations...")
         while True:
             # get action
             action_n = [agent.action(obs) for agent, obs in zip(trainers, obs_n)]
+            print(action_n)
             # environment step
             new_obs_n, rew_n, done_n, info_n = env.step(action_n)
             episode_step += 1
@@ -209,7 +218,9 @@ def train(arglist):
             obs_n = new_obs_n
 
             for i, rew in enumerate(rew_n):
-                episode_rewards[-1] += rew
+                episode_rewards[
+                    -1
+                ] += rew  ## / self.n (?) Do we want this to be average across all agents?
                 agent_rewards[i][-1] += rew
 
             if done or terminal:
@@ -247,9 +258,24 @@ def train(arglist):
                 agent.preupdate()
             for agent in trainers:
                 loss = agent.update(trainers, train_step)
+            # log metrics
+
+            tb_log_value("episode_reward", episode_rewards[train_step - 1], train_step)
+            tb_log_value(
+                "first_agent_reward", agent_rewards[0][train_step - 1], train_step
+            )
+            tb_log_value(
+                "second_agent_reward", agent_rewards[1][train_step], train_step
+            )
+            if loss is not None:
+                loss_to_log = loss
+            else:
+                loss_to_log = -100
+                tb_log_value("loss", loss_to_log, train_step)
 
             # save model, display training output
             if terminal and (len(episode_rewards) % arglist.save_rate == 0):
+                print("made it into if terminal and len(episde)")
                 U.save_state(arglist.save_dir, saver=saver)
                 # print statement depends on whether or not there are adversaries
                 if num_adversaries == 0:
@@ -274,6 +300,7 @@ def train(arglist):
                             round(time.time() - t_start, 3),
                         )
                     )
+
                 t_start = time.time()
                 # Keep track of final episode reward
                 final_ep_rewards.append(np.mean(episode_rewards[-arglist.save_rate :]))
