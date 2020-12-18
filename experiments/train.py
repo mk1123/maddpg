@@ -44,7 +44,7 @@ def parse_args():
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=1024,
+        default=64,
         help="number of episodes to optimize at the same time",
     )
     parser.add_argument(
@@ -204,7 +204,6 @@ def train(arglist):
         while True:
             # get action
             action_n = [agent.action(obs) for agent, obs in zip(trainers, obs_n)]
-            print(action_n)
             # environment step
             new_obs_n, rew_n, done_n, info_n = env.step(action_n)
             episode_step += 1

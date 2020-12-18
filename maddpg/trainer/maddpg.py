@@ -76,9 +76,15 @@ def p_train(
             q_input = tf.concat([obs_ph_n[p_index], act_input_n[p_index]], 1)
         q = q_func(q_input, 1, scope="q_func", reuse=True, num_units=num_units)[:, 0]
         pg_loss = -tf.reduce_mean(q)
+        # print("pg_loss")
+        # with tf.Session() as sess:
+        #     print(pg_loss.eval())
 
         loss = pg_loss + p_reg * 1e-3
 
+        # print("loss")
+        # with tf.Session() as sess:
+        #     print(pg_loss.eval())
         optimize_expr = U.minimize_and_clip(
             optimizer, loss, p_func_vars, grad_norm_clipping
         )
@@ -145,7 +151,11 @@ def q_train(
 
         # viscosity solution to Bellman differential equation in place of an initial condition
         q_reg = tf.reduce_mean(tf.square(q))
-        loss = q_loss  # + 1e-3 * q_reg
+
+        # print("q_loss")
+        # with tf.Session() as sess:
+        #     print(q_loss.eval())
+        loss = q_loss + 1e-3 * q_reg
 
         optimize_expr = U.minimize_and_clip(
             optimizer, loss, q_func_vars, grad_norm_clipping
@@ -226,6 +236,12 @@ class MADDPGAgentTrainer(AgentTrainer):
         self.replay_sample_index = None
 
     def action(self, obs):
+        act = self.act(obs[None])[0]
+        if np.isnan(act).any():
+            import pdb
+
+            pdb.set_trace()
+
         return self.act(obs[None])[0]
 
     def experience(self, obs, act, rew, new_obs, done, terminal):
@@ -236,6 +252,7 @@ class MADDPGAgentTrainer(AgentTrainer):
         self.replay_sample_index = None
 
     def update(self, agents, t):
+        print(len(self.replay_buffer))
         if (
             len(self.replay_buffer) < self.max_replay_buffer_len
         ):  # replay buffer is not large enough
@@ -272,6 +289,9 @@ class MADDPGAgentTrainer(AgentTrainer):
 
         # train p network
         p_loss = self.p_train(*(obs_n + act_n))
+        import pdb
+
+        pdb.set_trace()
 
         self.p_update()
         self.q_update()
